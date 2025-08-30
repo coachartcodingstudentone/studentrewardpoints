@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>List Student Reward Points</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem; line-height: 1.4; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    input[type="text"] { padding: 0.5rem; min-width: 16rem; }
+    button { padding: 0.5rem 0.9rem; cursor: pointer; }
+    .muted { color: #666; }
+    .error { color: #b00020; }
+    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
+    th { background: #f7f7f7; }
+    #total { font-weight: 600; margin-top: 0.5rem; }
+    .card { border: 1px solid #eee; border-radius: 8px; padding: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>List Student Reward Points</h1>
+
+  <form id="lookupForm">
+    <label for="studentName" class="visually-hidden">Student Name</label>
+    <input id="studentName" type="text" placeholder="Enter student name, e.g., Michael" required />
+    <button type="submit">Lookup</button>
+    <span id="status" class="muted"></span>
+  </form>
+
+  <div class="card">
+    <div id="summary" class="muted">Enter a student name and click Lookup.</div>
+    <div id="total"></div>
+    <div id="resultsContainer"></div>
+  </div>
+
+  <script>
+    // ======= CONFIGURE THESE TWO VALUES =======
+    const SUPABASE_URL = 'https://jrhypczmhcoplpjckknv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyaHlwY3ptaGNvcGxwamNra252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNjA5NTQsImV4cCI6MjA3MTYzNjk1NH0.nDzGd5H290D2GCjIdpw-Js0S1ecU-ylxDl3-FVx4jDw';
+    // ==========================================
+
+    // Basic helper for GET requests to PostgREST
+    async function sbGet(path, params = {}) {
+      const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
+      const res = await fetch(url.toString(), {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          Accept: "application/json",
+        },
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(()=>"");
+        throw new Error(`HTTP ${res.status} ${res.statusText}: ${txt}`);
+      }
+      return res.json();
+    }
+
+    const form = document.getElementById("lookupForm");
+    const nameInput = document.getElementById("studentName");
+    const statusEl = document.getElementById("status");
+    const summaryEl = document.getElementById("summary");
+    const totalEl = document.getElementById("total");
+    const containerEl = document.getElementById("resultsContainer");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      if (!name) return;
+
+      statusEl.textContent = "Loading…";
+      summaryEl.textContent = "";
+      totalEl.textContent = "";
+      containerEl.innerHTML = "";
+
+      try {
+        // 1) Find student IDs by exact name (case-insensitive match). Adjust if you want partials.
+        //    Example: Students?select=id&name=ilike.Michael   (exact)
+        //    For partials, use ilike.*michael*  (uncomment below)
+        const studentParams = {
+          select: "id,name",
+          // name: `eq.${name}`,                 // exact case-sensitive
+          name: `ilike.${name}`,                // exact but case-insensitive per PostgREST collation
+          // name: `ilike.*${name}*`,           // partial match (case-insensitive)
+        };
+
+        // If your table/column names are quoted/mixed-case in SQL, PostgREST exposes lowercase by default
+        // unless you've configured otherwise. Using the same names here that you showed: "Students" and "Student_Reward_Points".
+        const students = await sbGet('Students', studentParams);
+
+        if (!students.length) {
+          statusEl.textContent = "";
+          summaryEl.textContent = `No student found for name "${name}".`;
+          return;
+        }
+
+        const ids = students.map(s => s.id).filter(v => v !== null && v !== undefined);
+        const idList = ids.join(",");
+        // 2) Fetch last 10 reward rows (newest ? oldest) for those student IDs
+        const last10Params = {
+          select: "award_datetime,award_points,award_reason,student_id",
+          order: "award_datetime.desc",
+          limit: "10",
+          "student_id": `in.(${idList})`,
+        };
+        const last10 = ids.length ? await sbGet('Student_Reward_Points', last10Params) : [];
+
+        // 3) Fetch ALL award_points for total (keep payload light by selecting only award_points)
+        const allPointsParams = {
+          select: "award_points",
+          "student_id": `in.(${idList})`,
+          // No limit: we need the full set to sum on client
+        };
+        const allPoints = ids.length ? await sbGet('Student_Reward_Points', allPointsParams) : [];
+
+        const total = allPoints.reduce((acc, r) => acc + (Number(r.award_points) || 0), 0);
+
+        // Render summary
+        const nameList = [...new Set(students.map(s => s.name))].join(", ");
+        summaryEl.textContent = `Showing the latest 10 awards for: ${nameList} (matching name "${name}")`;
+        totalEl.textContent = `Total award points (all time for this name): ${total}`;
+
+        // Render table
+        if (!last10.length) {
+          containerEl.innerHTML = "<div class='muted'>No recent awards found.</div>";
+        } else {
+          const table = document.createElement("table");
+          table.innerHTML = `
+            <thead>
+              <tr>
+                <th>Award Date/Time</th>
+                <th>Points</th>
+                <th>Reason</th>
+                <th class="muted">Student ID</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          `;
+          const tbody = table.querySelector("tbody");
+          last10.forEach(row => {
+            const tr = document.createElement("tr");
+            const dt = formatDate(row.award_datetime);
+            tr.innerHTML = `
+              <td>${escapeHtml(dt)}</td>
+              <td>${Number(row.award_points) || 0}</td>
+              <td>${escapeHtml(row.award_reason ?? "")}</td>
+              <td class="muted">${row.student_id}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+          containerEl.appendChild(table);
+        }
+
+        statusEl.textContent = "";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "";
+        summaryEl.innerHTML = `<span class="error">Error: ${escapeHtml(err.message || String(err))}</span>`;
+      }
+    });
+
+    function formatDate(iso) {
+      try {
+        const d = new Date(iso);
+        // Show local time; adjust if you prefer UTC
+        return d.toLocaleString();
+      } catch { return iso; }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+  </script>
+</body>
+</html>
+

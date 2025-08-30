@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Award Student Points</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#f7f7fb; --card:#ffffff; --ink:#1b1b1f; --muted:#6b7280; --accent:#2563eb; --danger:#dc2626; --ok:#059669; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg); color: var(--ink); line-height: 1.45;
+      display: grid; place-items: center; min-height: 100svh; padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 640px; background: var(--card);
+      border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.06);
+      padding: 20px 20px 16px;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    p.hint { margin: 0 0 16px; color: var(--muted); font-size: .95rem; }
+    form { display: grid; gap: 14px; }
+    label { font-weight: 600; font-size: .95rem; display: block; margin-bottom: 6px; }
+    input[type="text"], input[type="number"], textarea {
+      width: 100%; border: 1px solid #d1d5db; border-radius: 10px; padding: 10px 12px; font: inherit; background: #fff;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 560px) {
+      .row.two { grid-template-columns: 1fr 200px; align-items: end; }
+    }
+    .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+    button {
+      appearance: none; border: 1px solid transparent; border-radius: 999px; padding: 10px 16px; font: inherit; cursor: pointer;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost   { background: transparent; color: var(--ink); border-color: #e5e7eb; }
+    button[disabled] { opacity: .6; cursor: not-allowed; }
+    .status { margin-top: 10px; font-size: .95rem; }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--danger); }
+    small.note { color: var(--muted); display: block; margin-top: 6px; }
+    .footer { margin-top: 14px; color: var(--muted); font-size: .85rem; }
+    code.k { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Award Student Reward Points</h1>
+    <p class="hint">Fill out the form to record a reward for a student. “Cancel” clears the form.</p>
+
+    <form id="award-form" novalidate>
+      <div>
+        <label for="name">Student Name</label>
+        <input id="name" name="name" type="text" inputmode="text" autocomplete="name" placeholder="e.g., Michael" required />
+        <small class="note">Exact match to the student’s name in <code class="k">Student</code>.</small>
+      </div>
+
+<script>
+  // Parse query parameters from the URL
+  const params = new URLSearchParams(window.location.search);
+
+  // Check if 'name' exists in the URL
+  const studentName = params.get("name");
+
+  if (studentName) {
+    // Populate the input box with the name
+    const nameInput = document.getElementById("name");
+    nameInput.value = studentName;
+
+    // Optionally: mark the field as read-only so it can't be changed
+    // nameInput.readOnly = true;
+  }
+</script>
+
+      <div class="row two">
+        <div>
+          <label for="reason">Reason for Award</label>
+          <textarea id="reason" name="reason" placeholder="Brief reason for the award" required></textarea>
+        </div>
+        <div>
+          <label for="points">Points to Award</label>
+          <input id="points" name="points" type="number" min="10" step="10" placeholder="10" required />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn-ghost" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn-primary" id="submit-btn">Submit</button>
+      </div>
+
+      <div id="status" class="status" aria-live="polite"></div>
+    </form>
+
+    <div class="footer">
+      <div>Tables used: <code class="k">Student(id, name)</code> and <code class="k">Student_Rewards_Points(id, student_id, award_datetime, award_points, award_reason)</code></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // -----------------------------------------------------------------------------
+    // Configure Supabase
+    // -----------------------------------------------------------------------------
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    // TODO: Replace with your project values
+    const SUPABASE_URL = 'https://jrhypczmhcoplpjckknv.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpyaHlwY3ptaGNvcGxwamNra252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNjA5NTQsImV4cCI6MjA3MTYzNjk1NH0.nDzGd5H290D2GCjIdpw-Js0S1ecU-ylxDl3-FVx4jDw';
+
+    // Table names exactly as provided (adjust here if your identifiers differ)
+    const TABLE_STUDENT = 'Students';
+    const TABLE_POINTS  = 'Student_Reward_Points';
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -----------------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------------
+    const $ = (sel) => document.querySelector(sel);
+    const statusEl = $('#status');
+    const setStatus = (msg, kind = '') => {
+      statusEl.textContent = msg || '';
+      statusEl.className = `status ${kind}`;
+    };
+    const setBusy = (busy) => {
+      $('#submit-btn').disabled = busy;
+      $('#cancel-btn').disabled = busy;
+    };
+
+    function validate({ name, points, reason }) {
+      if (!name || name.trim().length === 0) return 'Please enter a name.';
+      if (!reason || reason.trim().length === 0) return 'Please enter a reason.';
+      const n = Number(points);
+      if (!Number.isInteger(n) || n < 1) return 'Points must be a whole number = 1.';
+      return null;
+    }
+
+    // Find an existing student by exact name (case-sensitive). If not found, create.
+    async function getOrCreateStudentIdByName(name) {
+      // Try exact match first
+      let { data, error } = await supabase
+        .from(TABLE_STUDENT)
+        .select('id, name')
+        .eq('name', name)
+        .limit(1);
+
+      if (error) throw new Error(`Error checking student: ${error.message}`);
+
+      if (data && data.length > 0) {
+        return data[0].id;
+      }
+
+      return 'Name was not found in the database.';
+    }
+
+    async function insertReward({ student_id, award_points, award_reason }) {
+      const payload = {
+        student_id,
+        award_datetime: new Date().toISOString(),
+        award_points,
+        award_reason
+      };
+
+      const { error } = await supabase.from(TABLE_POINTS).insert(payload);
+      if (error) throw new Error(`Error inserting reward: ${error.message}`);
+    }
+
+    // -----------------------------------------------------------------------------
+    // UI Wiring
+    // -----------------------------------------------------------------------------
+    $('#cancel-btn').addEventListener('click', () => {
+      $('#award-form').reset();
+      setStatus('');
+    });
+
+    $('#award-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setStatus('');
+      setBusy(true);
+
+      const name   = $('#name').value.trim();
+      const points = $('#points').value;
+      const reason = $('#reason').value.trim();
+
+      const validationError = validate({ name, points, reason });
+      if (validationError) {
+        setStatus(validationError, 'err');
+        setBusy(false);
+        return;
+      }
+
+      try {
+        setStatus('Processing…');
+        const student_id = await getOrCreateStudentIdByName(name);
+        await insertReward({
+          student_id,
+          award_points: Number(points),
+          award_reason: reason
+        });
+
+        setStatus('Reward recorded successfully.', 'ok');
+        $('#award-form').reset();
+        $('#name').focus();
+      } catch (err) {
+        console.error(err);
+        setStatus(err?.message || 'Something went wrong.', 'err');
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    // Optional: warn if Supabase credentials are not set
+    if (SUPABASE_URL.includes('YOUR-PROJECT-REF') || SUPABASE_ANON_KEY === 'YOUR-ANON-PUBLIC-KEY') {
+      setStatus('Configure your Supabase URL and anon key in the script.', 'err');
+    }
+  </script>
+</body>
+</html>
+
+
+
+
