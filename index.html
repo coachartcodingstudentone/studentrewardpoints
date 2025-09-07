@@ -2,20 +2,68 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Student Points System</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem; line-height: 1.4; }
+    :root {
+      --gap: 0.5rem;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 2rem;
+      line-height: 1.4;
+      background: #fafafa;
+      color: #111;
+    }
+
     h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }
-    form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-    input[type="text"] { padding: 0.5rem; min-width: 16rem; }
-    button { padding: 0.5rem 0.9rem; cursor: pointer; }
+    h2 { font-size: 1.1rem; margin: 0 0 0.25rem; }
+
     .muted { color: #666; }
     .error { color: #b00020; }
+
+    .card {
+      border: 1px solid #eee;
+      border-radius: var(--radius);
+      padding: 1rem;
+      background: #fff;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .row {
+      display: flex;
+      gap: var(--gap);
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    button {
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #f7f7f7;
+      min-height: 44px;         /* good touch target for iPhone */
+    }
+
+    button.award { background: #eef4ff; border-color: #cddafd; }
+    button.list { background: #e9fbe7; border-color: #c7efc2; }
+
+    /* Tables (kept from your original) */
     table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
     th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
     th { background: #f7f7f7; }
     #total { font-weight: 600; margin-top: 0.5rem; }
-    .card { border: 1px solid #eee; border-radius: 8px; padding: 1rem; }
+
+    /* Mobile-friendly tweaks */
+    @media (max-width: 480px) {
+      body { margin: 1rem; }
+      .row > * { flex: 1 1 100%; } /* stack buttons full-width on small screens */
+      button { width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -23,15 +71,18 @@
     <h1>Student Points System</h1>
     <p class="muted">Choose an action below.</p>
 
-    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-      <button type="button" onclick="location.href='AwardPointsV1.html'">Award Student Points</button>
-      <button type="button" onclick="location.href='ListPointsV1.html'">List Awarded Points</button>
+    <div class="row">
+      <button type="button" class="award" onclick="location.href='AwardPointsV1.html?name=Michael'">
+        Award Points to Michael
+      </button>
+      <button type="button" class="award" onclick="location.href='AwardPointsV1.html?name=David'">
+        Award Points to David
+      </button>
+    </div>
+    <div class="row">
+      <button type="button" class="list" onclick="location.href='ListPointsV1.html'">List Awarded Points</button>
     </div>
   </div>
 </body>
+
 </html>
-
-
-
-
-
